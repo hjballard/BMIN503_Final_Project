@@ -835,13 +835,13 @@ knitr::kable(
 ```
 
 
-Next, the clinical metric of response was calculated for each patient with available data and added as in a new column.
+Next, the clinical metric of response was calculated for each patient with available data and added as a new column.
 ```{r}
 # calculate percent improvement based on UPDRS pre- and post- scores
 dat <- dat %>%
   mutate(
     score_change = Postop - Preop,
-    pct_improve = abs(100 * (Postop - Preop) / Postop)
+    pct_improve = abs(100 * (Postop - Preop) / Postop) # abs() prevents negative values from being used
   )
 
 glimpse(dat) # check data
@@ -867,13 +867,13 @@ This plot shows binary clinical response or NA, plotted against LF overlap. The 
 # LF overlap and response
 ggplot(dat, aes(x = Response, y = overlap_LF_mm3, fill = Response)) +
   geom_boxplot(alpha = 0.6) +
-  geom_jitter(width = 0.1, size = 2) +
+  geom_jitter(width = 0.1, size = 2) + # add random spacing to the datapoints
   labs(
     x = "Clinical response",
     y = "LF overlap (mm³)",
     title = "LF overlap by response status"
   ) +
-  theme_minimal()
+  theme_minimal() #simple, minimal theme
 ```
 
 
@@ -882,7 +882,7 @@ To get more granular, I plotted the relationship between LF overlap and the clin
 # LF overlap vs UPDRS % improvement
 ggplot(dat, aes(overlap_LF_mm3, pct_improve)) +
   geom_point(size = 3) +
-  geom_smooth(method = "lm", se = TRUE) +
+  geom_smooth(method = "lm", se = TRUE) + # add linear regression line to summarize relationship and display 95% CIs around it
   labs(
     x = "LF overlap (mm³)",
     y = "UPDRS Percent improvement",
@@ -897,15 +897,15 @@ To add another descriptive figure of variable correlations, I generated the heat
 ```{r}
 # descriptive heatmap of variable relationships
 vars <- dat %>%
-  select(overlap_LF_mm3, overlap_AL_mm3, pct_improve, Age, SDR, `Sonications (delivered)`, `MaxAv Temp`)
+  select(overlap_LF_mm3, overlap_AL_mm3, pct_improve, Age, SDR, `Sonications (delivered)`, `MaxAv Temp`) # select variables
 
-cor_mat <- cor(vars, use = "complete.obs")
+cor_mat <- cor(vars, use = "complete.obs") #compute Pearson correlation matrix using only rows without missing values in variable pair
 
-corrplot(
+corrplot( # visualize in a heatmap
   cor_mat,
-  method = "color",
-  type = "upper",
-  tl.col = "black"
+  method = "color", # color gradient reflects correlation strength
+  type = "upper", # display only upper triangle of matrix
+  tl.col = "black" # text color
 )
 ```
 
@@ -915,13 +915,13 @@ I began analyses with a simple correlation test to determine if there is a linea
 The results were visualized in order to more easily keep our outliers in mind.
 ```{r}
 # simple correlation analyses for LF and AL overlaps
-cor.test(dat$overlap_LF_mm3, dat$pct_improve, use = "complete.obs")
+cor.test(dat$overlap_LF_mm3, dat$pct_improve, use = "complete.obs") # Pearson correlation test between two variables
 
 cor.test(dat$overlap_AL_mm3, dat$pct_improve, use = "complete.obs")
 
 ggplot(dat, aes(x = overlap_LF_mm3, y = pct_improve)) +
-  geom_point(size = 2) +
-  geom_smooth(method = "lm", se = FALSE) +
+  geom_point(size = 2) +    # scatter plot of observations
+  geom_smooth(method = "lm", se = FALSE) + # add linear regression trend line, no CI band
   labs(
     x = "Lenticular fasciculus overlap (mm³)",
     y = "UPDRS III % improvement"
@@ -962,23 +962,23 @@ Increased age associates with worse outcomes.
 # multi-variable exploratory linear regression
 dat_scaled <- dat %>%
   mutate(across(
-    c(overlap_LF_mm3, overlap_AL_mm3, Age, SDR, `Sonications (delivered)`, `MaxAv Temp`),
-    ~ scale(.x) %>% as.numeric()
+    c(overlap_LF_mm3, overlap_AL_mm3, Age, SDR, `Sonications (delivered)`, `MaxAv Temp`), # scale the dataset so that continuous predictors are standardized
+    ~ scale(.x) %>% as.numeric() # convert scaled matrix to numeric vector
   ))
 
-model_lm_scaled <- lm(
+model_lm_scaled <- lm(  # fit the model using scaled predictors
   pct_improve ~ overlap_LF_mm3 + overlap_AL_mm3 +
     Age + SDR + `Sonications (delivered)` + `MaxAv Temp`,
   data = dat_scaled
 )
 
-summary(model_lm_scaled)
+summary(model_lm_scaled) # summarize output stats
 ```
 
 
 Given these results I decided to repeat linear regressions with one predictor at a time to hopefully increase certainty of correlations when removing adjustments for the covariates. While the results are a bit more precise, they remain not statistically significant and carry a large amount of uncertainty. It is still encouraging to see results consistent with our previous analyses.
 ```{r}
-predictors <- c(
+predictors <- c(    # set predictors
   "overlap_LF_mm3",
   "overlap_AL_mm3",
   "Age",
@@ -987,23 +987,23 @@ predictors <- c(
   "`MaxAv Temp`"
 )
 
-lm_results <- lapply(predictors, function(var) {
-  formula <- as.formula(paste("pct_improve ~", var))
-  model <- lm(formula, data = dat)
-  summary(model)
+lm_results <- lapply(predictors, function(var) {     # fit a separate linear model for each predictor, lapply loops the predictors and stores model summaries
+  formula <- as.formula(paste("pct_improve ~", var))  # model formula
+  model <- lm(formula, data = dat)   # fit linear regression
+  summary(model)  # return the summary
 })
 
-names(lm_results) <- predictors
+names(lm_results) <- predictors  # use predictor names for the list of model summaries
 
 lm_table <- lapply(predictors, function(var) {
   formula <- as.formula(paste("pct_improve ~", var))
-  tidy(lm(formula, data = dat)) %>%
-    filter(term != "(Intercept)") %>%
-    mutate(predictor = var)
+  tidy(lm(formula, data = dat)) %>%    # convert model to tidy tibble
+    filter(term != "(Intercept)") %>%   # remove intercept row
+    mutate(predictor = var)    # add predictor name column
 }) %>%
-  bind_rows()
+  bind_rows()     # combine results in one table
 
-lm_table_nice <- lm_table %>%
+lm_table_nice <- lm_table %>%   # rename columns for presentation
   rename(
     Predictor = predictor,
     Estimate = estimate,
@@ -1012,7 +1012,7 @@ lm_table_nice <- lm_table %>%
     `p value` = p.value
   )
 
-knitr::kable(
+knitr::kable(   # render clean summary table
   lm_table_nice,
   digits = 3,
   caption = "Univariable linear regression models predicting percent clinical improvement"
@@ -1025,7 +1025,7 @@ Next, I attempted to fit a logistic regression to predict response outcome (bina
 ```{r}
 # logistic regression
 model_glm <- glm(
-  Response ~ overlap_LF_mm3 + overlap_AL_mm3 +
+  Response ~ overlap_LF_mm3 + overlap_AL_mm3 +  # set binary outcome variable and predictors
     Age + SDR + `Sonications (delivered)` + `MaxAv Temp`,
   data = dat,
   family = binomial
@@ -1033,7 +1033,7 @@ model_glm <- glm(
 
 summary(model_glm)
 
-tidy(model_glm, exponentiate = TRUE, conf.int = TRUE)
+tidy(model_glm, exponentiate = TRUE, conf.int = TRUE)  # clean up the summary and convert Log-odds coefficients to odds ratios; add 95% CIs for them
 ```
 
 
@@ -1050,7 +1050,7 @@ I could not draw any strong conclusions from this analysis, but the trends remai
 ```{r}
 # random forest classification
 
-rf_dat <- dat %>%
+rf_dat <- dat %>% #set binary response variable and predictors
   select(
     Response,
     overlap_LF_mm3,
@@ -1060,7 +1060,7 @@ rf_dat <- dat %>%
     `Sonications (delivered)`,
     `MaxAv Temp`
   ) %>%
-  drop_na()
+  drop_na() # drop incomplete cases
 
 rf_dat2 <- rf_dat %>% # I could not get random forest to work without changing the naming of the last two variables added to analysis
   rename(
@@ -1068,23 +1068,23 @@ rf_dat2 <- rf_dat %>% # I could not get random forest to work without changing t
     MaxAv_Temp = `MaxAv Temp`
   )
 
-rf_dat2$Response <- as.factor(rf_dat2$Response)
+rf_dat2$Response <- as.factor(rf_dat2$Response)  # convert response variable to factor for classification RF model
 
 set.seed(42)
-rf_model <- randomForest(
+rf_model <- randomForest(  # fit RF model 
   Response ~ .,
   data = rf_dat2,
   ntree = 500,
-  importance = TRUE
+  importance = TRUE   # enable variable importance calculation
 )
 
-varImpPlot(rf_model)
+varImpPlot(rf_model) # plot variable importance metrics
 
-rf_dat2$rf_pred <- as.numeric(predict(rf_model, type = "prob")[, "1"])
-roc_rf <- roc(rf_dat2$Response, rf_dat2$rf_pred)
-auc_rf <- auc(roc_rf)
+rf_dat2$rf_pred <- as.numeric(predict(rf_model, type = "prob")[, "1"])  # generate predicted probabilities for positive response ("1")
+roc_rf <- roc(rf_dat2$Response, rf_dat2$rf_pred)  # compute ROC curve using observed responses and predicted probabilities
+auc_rf <- auc(roc_rf) # calculate AUC
 
-plot(roc_rf, col = "blue", lwd = 2,
+plot(roc_rf, col = "blue", lwd = 2,  # plot ROC curve with diagonal reference line representing "chance"-level classification
      main = sprintf("ROC curve (AUC = %.3f)", auc_rf))
 abline(a = 0, b = 1, lty = 2, col = "gray")
 
@@ -1093,17 +1093,17 @@ abline(a = 0, b = 1, lty = 2, col = "gray")
 
 For the last model, I performed a univariable generalized linear model just for LF overlap. This was a nice way to visualize the directional association between increased LF overlap and increased predicted response probability that our data indicates. Of course, this is not statistically significant, does not indicate causality, and comes with a good deal of uncertainty still.
 ```{r}
-glm_lf <- glm(
+glm_lf <- glm(      # fit univariable logistic regression model; set binary variable and predictor
   Response ~ overlap_LF_mm3,
   data = dat,
   family = binomial
 )
 
-dat$predicted_prob <- predict(glm_lf, newdata = dat, type = "response")
+dat$predicted_prob <- predict(glm_lf, newdata = dat, type = "response")  # generate predicted probabilities for each subject
 
-ggplot(dat, aes(x = overlap_LF_mm3, y = predicted_prob, color = Response)) +
+ggplot(dat, aes(x = overlap_LF_mm3, y = predicted_prob, color = Response)) +  # visualize predicted probability of resopnse as function of LF overlap
   geom_point(size = 3) +
-  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +  # add fitted logistic regression curve; no CIs
   labs(
     x = "LF overlap (mm³)",
     y = "Predicted probability of response",
